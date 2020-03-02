@@ -1,0 +1,523 @@
+---
+title: "MIMIC III Exploration for Mortality Prediction "
+author: "Jie HAN"
+date: "5/16/2019"
+output: html_document
+---
+
+## Abstract
+We have a cohort of heart failure patients from CCU with vital features that have been selected from the MIMIC III dataset. Different methods are utilized to predict heart failure mortality in CCU, including logistic regression, SVM, decision tree, random forest and boosting models. One favorite model is chosen from those predictable models evaluated by confusion matrix, ROC curves and AUC. We also figure out which features could be used to predict mortality of heart failure patients from one inference model. 
+
+
+```{r global_options, warning=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, tidy = TRUE)
+```
+
+
+```{r}
+setwd <- ("/Users/jill/Documents/614 final assignment/")
+library(ggplot2)
+library(stats)
+library (dplyr)
+library(corrplot)
+library (dplyr)
+library(psych)
+library(rgl)
+library(pwr)
+library(pscl)
+library(ISLR)
+library(dlookr)
+library(Hmisc)
+library(pastecs)
+library(car)
+library(lattice)
+library(caret)
+library(rpart.plot)
+library(pROC)
+library(ROCR)
+library(randomForest)
+library(kernlab)
+library(e1071)
+library(ROSE)
+```
+
+
+## 1. Perform data cleaning.
+a. import dataset
+```{r}
+hf_df <- read.csv("final_dataset.csv", header = T, stringsAsFactors = F)
+summary(hf_df)
+str(hf_df)
+```
+
+
+b. Data Cleaning
+
+```{r}
+hf <- hf_df
+summary(hf)
+# Remove meaningless variables for our model: subject_id, hadm_id, last_careunit.
+hf <- hf[,-c(1,2,3)]
+
+##  Change variables to appropriate types.
+# status need to be changed into factor type
+hf$status <- factor(hf$status, levels = c("Alive","dead"))
+summary(hf$status)
+
+# glucose_num, sodium_num, wbc_count_num, calcium_num, hemoglobin_num, creatinine_num, urea_nitrogen_num, chloride_num, pco2_num, all of these variables should be changed into numeric variables.
+hf[,-c(1:3)] <- data.frame(lapply(hf[,-c(1:3)],as.numeric))
+summary(hf)
+
+# As pco2_num has a lot of NAs, drop this variable.
+hf <- subset(hf,select = - pco2_num)
+
+# There are some variables still have a few NAs, will be imputed after data splitting.
+```
+
+
+
+## 2. Display summary information on the data.
+```{r}
+summary(hf)
+lapply(hf[,-2], sd, na.rm = T)
+```
+
+
+
+# Summary
+This dataset has 11 variables, 10 are numerical and 1 is categorical variable. We'll choose status as response variable and other 10 numerical variables as predictoes.
+
+
+
+## 3. Create visualizations of the distributions of key variables by the response variable. (Ex: colored by mortality).
+
+Univariate
+```{r}
+q <- ggplot(hf)
+# Age distribution colored by mortality
+q+geom_density(aes(x=age, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Age (density)") + xlab("Age (year)") + ylab("Density")
+
+q+ geom_histogram(aes(x=age, fill=status),bins = 20, position = "dodge") +
+  ggtitle("Destribution of Age (histogram)") + xlab("Age (year)") + ylab("Frequency")
+```
+
+```{r}
+# Los distribution colored by mortality
+q+geom_density(aes(x=los, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Los (density)") + xlab("Los (day)") + ylab("Density")
+
+q+ geom_histogram(aes(x=los, fill=status),bins = 10, position = "dodge") +
+  ggtitle("Destribution of Los (histogram)") + xlab("Los (day)") + ylab("Frequency")
+```
+
+```{r}
+# Glucose_num distribution colored by mortality
+q+geom_density(aes(x=glucose_num, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of glucose_num (density)") + xlab("Glucose (mg/dL)") + ylab("Density")
+
+q+ geom_histogram(aes(x=glucose_num, fill=status),bins = 8, position = "dodge") +
+  ggtitle("Destribution of glucose_num (histogram)") + xlab("Glucose (mg/dL)") + ylab("Frequency")
+```
+
+```{r}
+# Sodium_num distribution colored by mortality
+q+geom_density(aes(x=sodium_num, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Sodium_num (density)") + 
+  xlab("Sodium_num (mmol/L)") + ylab("Density")
+
+q+ geom_histogram(aes(x=sodium_num, fill=status),bins = 15, position = "dodge") +
+  ggtitle("Destribution of Sodium_num (histogram)") + 
+  xlab("Sodium_num (mmol/L)") + ylab("Frequency")
+```
+
+```{r}
+# Wbc_count_num distribution colored by mortality
+q+geom_density(aes(x=wbc_count_num, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Wbc_count_num (density)") + 
+  xlab("Wbc_count_num (x 10-3/mL)") + ylab("Density")
+
+q+ geom_histogram(aes(x=wbc_count_num, fill=status),bins = 10, position = "dodge") +
+  ggtitle("Destribution of Wbc_count_num (histogram)") + 
+  xlab("Wbc_count_num (x 10-3/mL)") + ylab("Frequency")
+```
+
+```{r}
+# Calcium_num distribution colored by mortality
+q+geom_density(aes(x=calcium_num, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Calcium_num (density)") + 
+  xlab("Calcium_num (mg/dL)") + ylab("Density")
+
+q+ geom_histogram(aes(x=calcium_num, fill=status),bins = 10, position = "dodge") +
+  ggtitle("Destribution of Calcium_num (histogram)") + 
+  xlab("Calcium_num (mg/dL)") + ylab("Frequency")
+```
+
+```{r}
+# Hemoglobin_num distribution colored by mortality
+q+geom_density(aes(x=hemoglobin_num, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Hemoglobin_num (density)") + 
+  xlab("Hemoglobin_num (mg/dL)") + ylab("Density")
+
+q+ geom_histogram(aes(x=hemoglobin_num, fill=status),bins = 10, position = "dodge") +
+  ggtitle("Destribution of Hemoglobin_num (histogram)") + 
+  xlab("Hemoglobin_num (mg/dL)") + ylab("Frequency")
+```
+
+```{r}
+# Creatinine_num distribution colored by mortality
+q+geom_density(aes(x=creatinine_num, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Creatinine_num (density)") + 
+  xlab("Creatinine_num (mg/dL)") + ylab("Density")
+
+q+ geom_histogram(aes(x=creatinine_num, fill=status),bins = 10, position = "dodge") +
+  ggtitle("Destribution of Creatinine_num (histogram)") + 
+  xlab("Creatinine_num (mg/dL)") + ylab("Frequency")
+```
+
+```{r}
+# Urea_nitrogen_num distribution colored by mortality
+q+geom_density(aes(x=urea_nitrogen_num, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Urea_nitrogen_num (density)") + 
+  xlab("Urea_nitrogen_num (mg/dL)") + ylab("Density")
+
+q+ geom_histogram(aes(x=urea_nitrogen_num, fill=status),bins = 10, position = "dodge") +
+  ggtitle("Destribution of Urea_nitrogen_num (histogram)") + 
+  xlab("Urea_nitrogen_num (mg/dL)") + ylab("Frequency")
+```
+
+```{r}
+# Chloride_num distribution colored by mortality
+q+geom_density(aes(x=chloride_num, fill=status), alpha = 0.8) +
+  ggtitle("Destribution of Chloride_num (density)") + 
+  xlab("Chloride_num (mmol/L)") + ylab("Density")
+
+q+ geom_histogram(aes(x=chloride_num, fill=status),bins = 10, position = "dodge") +
+  ggtitle("Destribution of Chloride_num (histogram)") + 
+  xlab("Chloride_num (mmol/L)") + ylab("Frequency")
+```
+
+
+
+# Summary 
+
+The average age of patients who were dead in CCU is older than that of patients who were alive when discharging.
+Los of patients are centered on 0-10 days, but the frenquency of alive patients are higher.
+For patients who were dead, average of hemoglobin's level is lower than that of patients were alive.
+For patients who were dead, average of glucose's level, creatinine's level, urea_nitrogen level are higher than that of patients were alive.
+The distributions of sodium_num, wbc_count_num, calcium_num and chloride_num of patients are similar.
+
+
+
+
+## 4. Create visualizations of a couple of relationships you find interesting between variables (ex: scatter plot colored by mortality).
+
+Correlation  
+```{r}
+# Correlation matrix
+hf_num <- hf
+hf_num$status <- as.numeric(hf_num$status)
+c <- cor(hf_num, use = "pairwise.complete.obs", method = "spearman" )
+corrplot(c)
+
+# visualizations of relationships between variables:"sodium_num & chloride_num", "creatinine_num & urea_nitrogen_num" colored by status.
+q + geom_point(aes(x=sodium_num,y=chloride_num,col=status)) +
+  ggtitle("Relationship between Sodium_num and Chloride_num") +
+  xlab("Sodium_num (mmol/L)") + ylab("Chloride_num (mmol/L)")
+  
+q + geom_point(aes(x=creatinine_num,y=urea_nitrogen_num,col=status)) +
+  ggtitle("Relationship between Creatinine_num and Urea_nitrogen_num") +
+  xlab("Creatinine_num (mg/dL)") + ylab("Urea_nitrogen_num (mg/dL)")  
+```
+
+
+
+# Summary
+
+On the basis of correlation matrix, it shows that sodium_num is high related with  chloride_num, and creatinine_num is high related with urea_nitrogen_num. The scatter plots confirmed that those pairwise variables have positive relationships between them. If logistic model is not good fitted with data, we might check variables and remove one of collinearity variables.
+
+
+
+## 5. Split your data into train and test sets.
+
+```{r}
+# Split data
+set.seed(3033)
+intrain <- createDataPartition(y = hf$status, p= 0.7, list = FALSE)
+training <- hf[intrain,]
+testing <- hf[-intrain,]
+dim(intrain); dim(training); dim(testing)
+
+# Impute NAs - as there are a few NAs in all numeric variables, impute them with mean.
+# Training set
+im_train <- training
+summary(im_train)
+im_train <- data.frame(lapply(im_train, function(x) { 
+  if (is.numeric(x)){
+     x[is.na(x)]<- mean(x,na.rm =T)
+  }
+  x
+}))
+summary(im_train)
+
+# Testing set
+im_test <- testing
+summary(im_test)
+im_test <- data.frame(lapply(im_test, function(x) { 
+  if (is.numeric(x)){
+     x[is.na(x)]<- mean(x,na.rm =T)
+  }
+  x
+}))
+summary(im_test)
+```
+
+
+
+## 6. Fit and evaluate a logistic regression model. Be sure to include regularization and evaluate with pseudo R2. Consider providing a plot to visualize relationships revealed by your model.
+
+```{r}
+fit_main <- glm(status ~ ., data = im_train, family=binomial)
+fit_null <- glm(status ~ 1, data = im_train, family=binomial)
+fit_final <-step(fit_null, scope=list(lower=fit_null, upper=fit_main),direction="both")
+summary(fit_final) # chloride_num's p-value > 0.05, is non-statistic significant, remove this variable.
+fit_final2 <- glm(status ~ urea_nitrogen_num + age + wbc_count_num + 
+    hemoglobin_num, data = im_train, family=binomial)
+summary(fit_final2)
+pR2(fit_final2)
+
+pred_glm <-predict(fit_final2, im_test)
+df_compare_glm <- data.frame(pred_glm,im_test$status)
+# May view dataframe df_compare
+plot(df_compare_glm)
+
+test_pred <- ifelse(pred_glm >=0.5, "dead","Alive")
+test_pred <- factor(test_pred, levels = c("Alive","dead"))
+confusionMatrix(test_pred, im_test$status)
+
+
+# ROC curve
+p_log <- predict(fit_final2, newdata=im_test, type="response")
+pr_log <- prediction(pred_glm, im_test$status)
+prf_log <- performance(pr_log, measure = "tpr", x.measure = "fpr")
+par(pty = "s")
+plot(prf_log, colorize = T, 
+     main="ROC curve of logistic regression")
+abline(a=0, b=1)
+auc_log <- performance(pr_log, measure = "auc")
+auc_log <- round(auc_log@y.values[[1]],5)
+legend(.6,.2,auc_log,title="AUC",cex = .8)
+```
+
+
+
+## Summary of logistic regression model
+
+Final model includes 4 predictors which each p-value is far less than 0.05: urea_nitrogen_num, age, wbc_count_num, hemoglobin_num.
+The equation is:
+logit(P) = -4.51 + 0.026*urea_nitrogen_num + 0.057*age +
+           0.058*wbc_count_num - 0.12*hemoglobin_num
+           
+For 1 mg/dL increases in urea_nitrogen_num, the odds of mortality of heart failure patients is multiplied by 1.026 [exp(0.026)] on average, assuming other variables are held constant.
+
+For 1 year increases in age, the odds of mortality of heart failure patients is multiplied by 1.059 [exp(0.057)] on average, assuming other variables are held constant.
+
+For 1 x 10-3/mL increases in wbc_count_num, the odds of mortality of heart failure patients is multiplied by 1.06 [exp(0.058)] on average, assuming other variables are held constant.
+
+For 1 mg/dL increases in hemoglobin_num, the odds of mortality of heart failure patients is multiplied by 0.88 [exp(-0.12)] on average, assuming other variables are held constant.
+
+In pR2 results, McFadden is 0.182. It indicates that this model does not fit the data well, it can only explain 18% values of response variable in the dataset.The reason is our observations is not big enough, and the predictors might not include all of the vital predictors for mortality of heart failure patients. Plot of df_compare_glm confirms that this model does not predict well. Points are destributed widely comparing with true value. 
+
+Confusion Matrix indicates that this model could predict 100 patients mortality out of 201 patients who were dead in reality, and 167 alive patients out of 198 patients. Although this model predicts patients alive well, but predicting patients dead is more important and meaningful for clinicians and healthcare.
+         
+
+
+## 7. Fit and evaluate an SVM classifier, trying linear, poly and RBF kernels. Be sure to tune hyperparameters so as to avoid underfitting and overfitting.
+
+```{r}
+
+# Standardize data first
+trctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 3,classProbs = TRUE,
+                       summaryFunction = twoClassSummary)
+set.seed(3233)
+
+svm_linear <- train(status ~., data =im_train, method = "svmLinear",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneLength = 10,
+                    metric = "ROC")
+svm_linear
+svm_linear$finalModel
+
+test_pred_sl<- predict(svm_linear, newdata = im_test)
+confusionMatrix(test_pred_sl, im_test$status)
+par(pty = "s")
+test_pred_sl2 <- predict(svm_linear, newdata = im_test,type="prob")
+roc(im_test$status,test_pred_sl2[,2],plot=T,legacy.axes = T, col="purple",
+    main="ROC Curve of SVMLinear Model", xlab="FPR", ylab = "TPR", 
+    print.auc = T, print.auc.x=0.4,print.auc.y=0.3)
+```
+
+
+
+```{r}
+#SVM Polynomial Model
+set.seed(3233)
+trctrl_sp <- trainControl(method = "repeatedcv", number = 3, repeats = 3,classProbs = TRUE,
+                       summaryFunction = twoClassSummary)
+svm_poly <- train(status ~., data =im_train, method = "svmPoly",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneLength = 3,
+                    metric = "ROC")
+
+svm_poly
+svm_poly$finalModel
+test_pred_sp <- predict(svm_poly, newdata = im_test)
+confusionMatrix(test_pred_sp, im_test$status)
+par(pty = "s")
+test_pred_sp2 <- predict(svm_poly, newdata = im_test,type="prob")
+roc(im_test$status,test_pred_sp2[,2],plot=T,legacy.axes = T, col="blue",
+    main="ROC Curve of SVMPoly Model", xlab="FPR", ylab = "TPR", 
+    print.auc = T, print.auc.x=0.4,print.auc.y=0.3)
+```
+
+```{r}
+# SVM RBF Model
+set.seed(3233)
+svm_RBF <- train(status ~., data =im_train, method = "svmRadial",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneLength = 10,
+                    metric = "ROC")
+
+svm_RBF
+svm_RBF$finalModel
+test_pred_sr <- predict(svm_RBF, newdata = im_test)
+confusionMatrix(test_pred_sr, im_test$status)
+par(pty = "s")
+test_pred_sr2 <- predict(svm_RBF, newdata = im_test,type="prob")
+roc(im_test$status,test_pred_sr2[,2],plot=T,legacy.axes = T, col="red",
+    main="ROC Curve of SVMRBF Model", xlab="FPR", ylab = "TPR",
+    print.auc = T, print.auc.x=0.4,print.auc.y=0.3)
+
+```
+
+
+## 8. Fit and evaluate a decision tree. Be sure to tune hyper-parameters.
+
+```{r}
+set.seed(3233)
+dtree_fit <- train(status ~., data = im_train, method = "rpart",
+                   parms = list(split = "information"),
+                   trControl=trctrl, 
+                   tuneLength = 10,
+                   metric = "ROC")
+
+dtree_fit
+test_pred_dt <- predict(dtree_fit, newdata = im_test)
+confusionMatrix(test_pred_dt, im_test$status )
+prp(dtree_fit$finalModel, box.palette = "Reds")
+par(pty = "s")
+test_pred_dt2 <- predict(dtree_fit, newdata = im_test,type="prob")
+roc(im_test$status,test_pred_dt2[,2], plot=T,legacy.axes = T, col="orange",
+    main="ROC Curve of Decision Tree Model", xlab="FPR", ylab = "TPR",
+     print.auc = T, print.auc.x=0.4,print.auc.y=0.3)
+```
+
+
+
+## 9. Fit a random forest model. Be sure to tune hyper-parameters.
+
+```{r}
+set.seed(3233)
+rf_fit <- train(status~., data=im_train, method="rf", 
+                preProcess = c("center", "scale"),
+                trControl=trctrl, 
+                tuneLength = 10,
+                metric = "ROC")
+              
+rf_fit
+rf_fit$finalModel
+test_pred_rf <- predict(rf_fit, newdata = im_test)
+confusionMatrix(test_pred_rf, im_test$status )
+par(pty = "s")
+test_pred_rf2 <- predict(rf_fit, newdata = im_test,type="prob")
+roc(im_test$status,test_pred_rf2[,2], plot=T,legacy.axes = T, col="brown",
+    main="ROC Curve of Random Forsest Tree Model", xlab="FPR", ylab = "TPR",
+     print.auc = T, print.auc.x=0.4,print.auc.y=0.3)
+```
+
+
+
+## 10. Fit a xgboost model. Be sure to tune hyper-parameters.
+
+```{r}
+set.seed(3233)
+trctrl_xg <- trainControl(method = "repeatedcv", number = 4, repeats = 3,classProbs = TRUE,
+                       summaryFunction = twoClassSummary)
+xgb_fit <- train(status~., data=im_train, method="xgbTree", 
+                preProcess = c("center", "scale"),
+                trControl=trctrl_xg, 
+                tuneLength = 4,
+                metric = "ROC")
+              
+xgb_fit
+xgb_fit$finalModel
+test_pred_xgb <- predict(xgb_fit, newdata = im_test)
+confusionMatrix(test_pred_xgb, im_test$status )
+
+par(pty = "s")
+test_pred_xgb2 <- predict(xgb_fit, newdata = im_test,type="prob")
+test_pred_xgb2
+roc(im_test$status,test_pred_xgb2[,2], plot=T,legacy.axes = T, col="black",
+    main="ROC Curve of XGBoost Model", xlab="FPR", ylab = "TPR",
+     print.auc = T, print.auc.x=0.4,print.auc.y=0.3)
+```
+
+
+
+## Multiple ROC curves of different models.
+```{r}
+par(pty = "s")
+roc.curve(im_test$status,p_log)
+roc.curve(im_test$status,test_pred_sl2[,2], add=TRUE, col=2,
+lwd=2, lty=2)
+roc.curve(im_test$status,test_pred_sp2[,2], add=TRUE, col=3,
+lwd=2, lty=3)
+roc.curve(im_test$status,test_pred_sr2[,2], add=TRUE, col=4,
+lwd=2, lty=4)
+roc.curve(im_test$status,test_pred_dt2[,2], add=TRUE, col=5,
+lwd=2, lty=5)
+roc.curve(im_test$status,test_pred_rf2[,2], add=TRUE, col=6,
+lwd=2, lty=6)
+roc.curve(im_test$status,test_pred_xgb2[,2],add=TRUE, col=7,
+lwd=2, lty=7)
+legend("bottomright", 
+       c("Logistic Regression", "SVM Linear", "SVM Poly", "SVM RBF", "Decision tree", 
+         "Random Forest","XGBoost"),
+       col=1:7, lty=1:7, lwd=2,cex = 0.5)
+par(pty = "m")
+```
+
+
+## 10. Briefly summarize your findings, including a few sentences stating what your plots reveal and evaluating/comparing your models.
+
+
+
+### Evaluation of multiple models:
+
+      Model                   AUC                 Sensitivity               Specifity
+    Logistic regression      0.748                   0.84                     0.50 
+    SVM Linear               0.747                   0.69                     0.71
+    SVM Polynomial:          0.742                   0.71                     0.68
+    SVM RBF:                 0.746                   0.67                     0.69
+    Decision Tree:           0.700                   0.55                     0.80
+    Random Forest:           0.761                   0.63                     0.75
+    XGBoost:                 0.754                   0.69                     0.69
+
+Although AUC of decision tree model is lowerest in these models, it can predict 80% of patients mortality. It's suitable for practice. And the tree plot indicates that we can put age, glucose, wbc_count and urea_nitrogen as predictors for heart failure mortality. This result is also consistent with domain knowledge. The graph of tree is also easily for representation. So I would like to choose decision tree models as inference model rather than logistic regression model.
+
+For predictable model, AUC value of random forest and xgboost model are similar and higher than three SVM model, but 0.76 is not a good result. The reason is that the observations of dataset is not enough, we need huge observation for better results of machine learning methods.
+
+
