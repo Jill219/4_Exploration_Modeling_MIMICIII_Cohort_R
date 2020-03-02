@@ -1,4 +1,4 @@
-# 4 Exploration and Modeling of a MIMIC III Cohort by R  
+# 4. Exploration and Modeling of a MIMIC III Cohort by R  
 
 *05/2019*.  
 
