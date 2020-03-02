@@ -13,12 +13,12 @@
   1. Request a cohort of heart failure patients with ICD9 codes from CCU with vital features from the MIMIC III dataset by SQL (Group). 
   
   2. EDA:    
-   * Data cleaning.   
-   * Descriptive Statistics information on the data.  
-   * Visualizations of the distributions of key variables by the response variable.  
-   * visualizations of relationships between variables.  
+     * Data cleaning.   
+     * Descriptive Statistics information on the data.  
+     * Visualizations of the distributions of key variables by the response variable.  
+     * visualizations of relationships between variables.  
     
   3. ML:  
-   * Split data into train and test sets, impute Na.  
-   * Fit and evaluate different models and tune hyperparameters, including logic regression, SVM, a decision tree, random forest and xgboost models.   
-   * Plot multiple ROC curves of different models, identify a favorite one.  
+     * Split data into train and test sets, impute Na.  
+     * Fit and evaluate different models and tune hyperparameters, including logic regression, SVM, a decision tree, random forest and xgboost models.   
+     * Plot multiple ROC curves of different models, identify a favorite one.  
